@@ -1,56 +1,110 @@
 import streamlit as st
 from openai import OpenAI
+from google.cloud import bigquery
+import pandas as pd
 
-# Show title and description.
-st.title("💬 Chatbot")
+# Show title and description
+st.title("💬 My new sunday Chatbot")
 st.write(
     "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
     "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
     "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
 )
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
+# Ask user for their OpenAI API key and BigQuery table name
 openai_api_key = st.text_input("OpenAI API Key", type="password")
+bigquery_table_name = st.text_input("BigQuery Table Name", type="password")
+
 if not openai_api_key:
     st.info("Please add your OpenAI API key to continue.", icon="🗝️")
+elif not bigquery_table_name:
+    st.info("Please add your Google BigQuery Table Name to continue.")    
 else:
-
-    # Create an OpenAI client.
+    # Create an OpenAI client
     client = OpenAI(api_key=openai_api_key)
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
+    # Create a session state variable to store the chat messages
     if "messages" not in st.session_state:
         st.session_state.messages = []
-
-    # Display the existing chat messages via `st.chat_message`.
+    
+    # Display the existing chat messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+import re
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+def parse_query(prompt):
+    """Parse user query and return query type and parameters"""
+    prompt_lower = prompt.lower()
+    
+    # Check for row queries like "give me 10 rows"
+    row_match = re.search(r'(\d+)\s*rows?', prompt_lower)
+    if row_match:
+        return {'type': 'rows', 'n_rows': int(row_match.group(1))}
+    
+    # Check for sum queries like "sum of sales by region"
+    sum_match = re.search(r'sum\s+(?:of\s+)?(\w+)\s+by\s+(\w+)', prompt_lower)
+    if sum_match:
+        return {'type': 'sum', 'column': sum_match.group(1), 'group_by': sum_match.group(2)}
+    
+    return {'type': 'unknown'}
 
-        # Generate a response using the OpenAI API.
+# Create a chat input field
+if prompt := st.chat_input("Enter your query (e.g., 'Give me 10 rows' or 'Sum of sales by region')"):
+    # Store and display the current prompt
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # Parse the query
+    query_info = parse_query(prompt)
+    
+    if query_info['type'] == 'rows':
+        # Generate SQL directly for row requests
+        QUERY = f"SELECT * FROM {bigquery_table_name} LIMIT {query_info['n_rows']}"
+        
+    elif query_info['type'] == 'aggregation':
+        # Generate SQL directly for aggregation requests
+        operation = query_info['operation'].upper()
+        if operation in ['AVERAGE', 'AVG', 'MEAN']:
+            operation = 'AVG'
+        elif operation == 'TOTAL':
+            operation = 'SUM'
+        
+        QUERY = f"SELECT {query_info['group_by']}, {operation}({query_info['column']}) as {operation.lower()}_{query_info['column']} FROM {bigquery_table_name} GROUP BY {query_info['group_by']}"
+        
+    else:
+        # Use GPT for complex queries
         stream = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
+                {"role": "system", "content": f"Generate only SQL query for table {bigquery_table_name}. No explanations."}
+            ] + [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
             stream=True,
         )
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
         with st.chat_message("assistant"):
             response = st.write_stream(stream)
         st.session_state.messages.append({"role": "assistant", "content": response})
+
+        # Clean SQL query
+        QUERY = response.replace("```sql", "").replace("```", "").strip()
+    
+    # Show what we're running
+    st.code(QUERY)
+    
+    try:
+        # Run BigQuery
+        bigquery_client = bigquery.Client.from_service_account_info(dict(st.secrets["gcp_service_account"]))
+        data = bigquery_client.query(QUERY).to_dataframe()
+        st.dataframe(data)
+    except Exception as e:
+        st.error(f"Error: {e}")
+        # Try simple fallback
+        try:
+            fallback = f"SELECT * FROM {bigquery_table_name} LIMIT 10"
+            data = bigquery_client.query(fallback).to_dataframe()
+            st.dataframe(data)
+        except Exception as fallback_error:
+            st.error(f"Fallback also failed: {fallback_error}")    
