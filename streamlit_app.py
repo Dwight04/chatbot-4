@@ -50,6 +50,19 @@ try:
 except Exception as e:
     st.error(f"Error getting row count: {e}")
 
+parts = bigquery_table_name.split('.')
+project_id = parts[0]
+dataset_id = parts[1] 
+table_name = parts[2]
+columns_query = f"""
+SELECT column_name, data_type 
+FROM {project_id}.{dataset_id}.INFORMATION_SCHEMA.COLUMNS 
+WHERE table_name = '{table_name}'
+ORDER BY ordinal_position
+"""
+columns_df = bq_client.query(columns_query).to_dataframe()
+st.dataframe(columns_df, use_container_width=True)
+
 import re
 
 def parse_query(prompt):
