@@ -46,7 +46,7 @@ row_count_query = f"SELECT COUNT(*) as total_rows FROM `{bigquery_table_name}`"
 try:
     row_count_df = bq_client.query(row_count_query).to_dataframe()
     total_rows = row_count_df.iloc[0]['total_rows']
-    st.info(f"Total rows in table: {total_rows:,}")
+    st.info(f"Total rows in table {bigquery_table_name} are : {total_rows:,}")
 except Exception as e:
     st.error(f"Error getting row count: {e}")
 
@@ -61,6 +61,7 @@ WHERE table_name = '{table_name}'
 ORDER BY ordinal_position
 """
 columns_df = bq_client.query(columns_query).to_dataframe()
+st.info(f"Below are the columns in table {bigquery_table_name} ")
 st.dataframe(columns_df, use_container_width=True)
 
 import re
