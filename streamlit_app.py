@@ -63,7 +63,16 @@ if prompt := st.chat_input("Enter your query (e.g., 'Give me 10 rows' or 'Sum of
     if query_info['type'] == 'rows':
         # Generate SQL directly for row requests
         QUERY = f"SELECT * FROM {bigquery_table_name} LIMIT {query_info['n_rows']}"
-        
+
+    elif query_info['type'] == 'columns':
+    # Generate SQL to get column names and types
+        QUERY = f"""
+        SELECT column_name, data_type 
+        FROM {bigquery_table_name}.INFORMATION_SCHEMA.COLUMNS 
+        WHERE table_name = '{bigquery_table_name}'
+        ORDER BY ordinal_position
+        """
+
     elif query_info['type'] == 'aggregation':
         # Generate SQL directly for aggregation requests
         operation = query_info['operation'].upper()
