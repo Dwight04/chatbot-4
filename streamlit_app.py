@@ -2,6 +2,14 @@ import streamlit as st
 from openai import OpenAI
 from google.cloud import bigquery
 import pandas as pd
+from google.oauth2 import service_account
+
+credentials = service_account.Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"]
+)
+# Initialize BigQuery client
+bq_client = bigquery.Client(credentials=credentials, project='textsummarizerproject')
+
 
 # Show title and description
 st.title("💬 Text to SQL")
@@ -31,6 +39,16 @@ else:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+
+row_count_query = f"SELECT COUNT(*) as total_rows FROM `{bigquery_table_name}`"
+
+# Execute the query and display result
+try:
+    row_count_df = bq_client.query(row_count_query).to_dataframe()
+    total_rows = row_count_df.iloc[0]['total_rows']
+    st.info(f"Total rows in table: {total_rows:,}")
+except Exception as e:
+    st.error(f"Error getting row count: {e}")
 
 import re
 
