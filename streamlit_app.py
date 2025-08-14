@@ -75,10 +75,14 @@ if prompt := st.chat_input("Enter your query (e.g., 'Give me 10 rows' or 'Sum of
 
     elif query_info['type'] == 'columns':
     # Generate SQL to get column names and types
+        parts = bigquery_table_name.split('.')
+        project_id = parts[0]
+        dataset_id = parts[1] 
+        table_name = parts[2]
         QUERY = f"""
         SELECT column_name, data_type 
-        FROM {bigquery_table_name}.INFORMATION_SCHEMA.COLUMNS 
-        WHERE table_name = '{bigquery_table_name}'
+        FROM {project_id}.{dataset_id}.INFORMATION_SCHEMA.COLUMNS 
+        WHERE table_name = '{table_name}'
         ORDER BY ordinal_position
         """
 
