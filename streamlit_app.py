@@ -38,15 +38,24 @@ def parse_query(prompt):
     """Parse user query and return query type and parameters"""
     prompt_lower = prompt.lower()
     
+    # Check for column queries like "show columns", "list columns", "column names"
+    if re.search(r'(?:show|list|get|display)\s+columns?|column\s+names?|what\s+columns?', prompt_lower):
+        return {'type': 'columns'}
+    
     # Check for row queries like "give me 10 rows"
     row_match = re.search(r'(\d+)\s*rows?', prompt_lower)
     if row_match:
         return {'type': 'rows', 'n_rows': int(row_match.group(1))}
     
-    # Check for sum queries like "sum of sales by region"
-    sum_match = re.search(r'sum\s+(?:of\s+)?(\w+)\s+by\s+(\w+)', prompt_lower)
-    if sum_match:
-        return {'type': 'sum', 'column': sum_match.group(1), 'group_by': sum_match.group(2)}
+    # Check for aggregation queries like "sum/avg/count/max/min of column by group"
+    agg_match = re.search(r'(sum|average|avg|mean|count|max|min|total)\s+(?:of\s+)?(\w+)\s+by\s+(\w+)', prompt_lower)
+    if agg_match:
+        return {
+            'type': 'aggregation', 
+            'operation': agg_match.group(1), 
+            'column': agg_match.group(2), 
+            'group_by': agg_match.group(3)
+        }
     
     return {'type': 'unknown'}
 
